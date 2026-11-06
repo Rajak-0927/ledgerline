@@ -44,6 +44,8 @@ if (fs.existsSync(frontendDistPath)) {
     });
 }
 
+import { runSeed } from './db/seed.js';
+
 // Centralized error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('[SERVER_ERROR]', err);
@@ -53,8 +55,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 if (process.env.NODE_ENV !== 'test') {
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
         console.log(`[LEDGERLINE] Server actively listening on port ${PORT}`);
+        try {
+            await runSeed();
+        } catch (e: any) {
+            console.error('[AUTO_SEED_ERROR]', e.message);
+        }
     });
 }
 
