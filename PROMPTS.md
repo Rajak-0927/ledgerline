@@ -45,7 +45,7 @@ This log documents prompt-level interactions with the AI assistant during the en
     2. If a duplicate key arrives while `'IN_FLIGHT'`, reject immediately with `409 Conflict`.
     3. If the payload hash doesn't match the existing key, reject with `422 Unprocessable Entity` (Key Mismatch).
     4. Upon transaction commit, update the key's status to `'COMPLETED'` with the cached JSON response.
-* **Commit**: `[Implemented in backend/src/services/idempotency.service.ts]`
+* **Commit**: `b1b5af2`
 
 ---
 
@@ -70,6 +70,53 @@ This log documents prompt-level interactions with the AI assistant during the en
      ```
   2. Implemented an **AccountMutex queue (Defense-in-Depth)** at the application service layer that sequences parallel requests for the same account IDs in-process, complementing the database engine's row-level `FOR UPDATE` locks.
   3. Re-ran Vitest: All 5 test suites (7 tests) including 10 parallel overdraw attacks and 40 simultaneous cross-transfers passed with 0 errors.
-* **Commit**: `[feat: complete backend core ledger engine, tests passing]`
+* **Commit**: `b1b5af2`
+
+---
+
+### Entry 4: 2026-11-06 — Preserving Refused Attempts Under Transaction Rollbacks
+* **Date**: Friday, November 6, 2026
+* **Task / Prompt**:
+  > *"Log refused transactions when an overdraft or unauthorized cross-tenant transfer is attempted."*
+* **What the AI Produced**:
+  * The AI suggested inserting the refusal record directly inside the transfer transaction block before rolling back:
+    ```typescript
+    if (fromBalance < amount) {
+        await client.query("INSERT INTO refused_attempts ... VALUES (...)");
+        await client.query("ROLLBACK");
+        throw new Error("Insufficient funds");
+    }
+    ```
+* **What Was Specifically Wrong / Flawed**:
+  * **Audit Evidence Erasure**: In relational databases, issuing `ROLLBACK` reverts **all** uncommitted operations within that transaction block, including the audit insertion. Consequently, the record of the refused attempt vanished completely, violating Requirement #8 ("A per-account statement: every debit, every credit, and every refused attempt").
+* **What Was Done Instead (Correction)**:
+  * Extracted refusal logging into an **autonomous database action** (`logRefusedAttempt`):
+    1. First issue `ROLLBACK` on the financial transaction to release the pessimistic row locks and reset balance mutation.
+    2. Then invoke `logRefusedAttempt` through an independent connection/transaction to permanently commit the security audit log without blocking or rolling back with the financial failure.
+* **Commit**: `[Current commit]`
+
+---
+
+### Entry 5: 2026-11-06 — Canonical Decimal Serialization in Cryptographic Chaining
+* **Date**: Friday, November 6, 2026
+* **Task / Prompt**:
+  > *"Implement the SHA-256 cryptographic chain hashing function across all ledger postings."*
+* **What the AI Produced**:
+  * The AI implemented the hashing function using standard JavaScript string concatenation:
+    ```typescript
+    const raw = `${prevHash}|${entry.id}|${entry.amount}|${entry.running_balance}`;
+    return crypto.createHash('sha256').update(raw).digest('hex');
+    ```
+* **What Was Specifically Wrong / Flawed**:
+  * **Floating-Point String Drift**: In JavaScript, `Number(1000).toString()` produces `"1000"`, whereas PostgreSQL `NUMERIC(18, 4)` returns `"1000.0000"`. When rows were retrieved from the database during audit verification, the hash recomputation produced completely different digests because `"1000"` $\neq$ `"1000.0000"`, causing false-positive tampering alerts!
+* **What Was Done Instead (Correction)**:
+  * Implemented strict **Canonical Decimal Serialization**:
+    ```typescript
+    Number(entry.amount).toFixed(4)
+    Number(entry.running_balance).toFixed(4)
+    new Date(entry.created_at).toISOString()
+    ```
+  * All amounts and balances are strictly formatted to 4 decimal places before SHA-256 digest calculation, ensuring deterministic cryptographic verification across all clients and databases.
+* **Commit**: `[Current commit]`
 
 ---

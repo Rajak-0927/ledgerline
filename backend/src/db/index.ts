@@ -54,7 +54,7 @@ export function initializeDatabase(): { query: IDbPool['query']; connect: IDbPoo
         // Register custom functions needed by schema
         memoryDb.public.registerFunction({
             name: 'gen_random_uuid',
-            returns: memoryDb.public.getType('text'),
+            returns: memoryDb.public.getType('text' as any),
             implementation: () => crypto.randomUUID(),
         });
 
