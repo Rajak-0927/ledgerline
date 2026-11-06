@@ -20,7 +20,7 @@ This log documents prompt-level interactions with the AI assistant during the en
   * Enforced **Double-Entry Bookkeeping** with immutable `transactions` and `ledger_entries` (every transfer generates an equal Debit and Credit row).
   * Replaced distributed/in-memory locks with database-native **Pessimistic Row-Level Locking** (`SELECT ... FOR UPDATE`).
   * Implemented **Deterministic Account ID Sorting** (`ORDER BY id ASC`) before acquiring row locks, mathematically preventing deadlocks.
-* **Commit**: `[Initial commit: Project scaffold, THREATS.md & PROMPTS.md]`
+* **Commit**: `65ced7d`
 
 ---
 
@@ -45,6 +45,31 @@ This log documents prompt-level interactions with the AI assistant during the en
     2. If a duplicate key arrives while `'IN_FLIGHT'`, reject immediately with `409 Conflict`.
     3. If the payload hash doesn't match the existing key, reject with `422 Unprocessable Entity` (Key Mismatch).
     4. Upon transaction commit, update the key's status to `'COMPLETED'` with the cached JSON response.
-* **Commit**: `[Pending implementation in ledger engine]`
+* **Commit**: `[Implemented in backend/src/services/idempotency.service.ts]`
+
+---
+
+### Entry 3: 2026-11-06 — Concurrency Defense-in-Depth & Parameterized Array Incompatibility
+* **Date**: Friday, November 6, 2026
+* **Task / Prompt**:
+  > *"Write the transfer locking SQL query and run the automated concurrency attack test suite."*
+* **What the AI Produced**:
+  * The AI generated the lock acquisition query as:
+    ```sql
+    SELECT * FROM accounts WHERE id = ANY($1) ORDER BY id ASC FOR UPDATE
+    ```
+    passing `[[firstLockId, secondLockId]]` as parameter.
+  * Relied exclusively on database-level `FOR UPDATE` lock hints without checking engine compatibility with in-process test runners.
+* **What Was Specifically Wrong / Flawed**:
+  1. **SQL Parameter Syntax Error**: The nested array syntax for `ANY($1)` failed during query evaluation, returning 0 rows and causing transfers to abort with `One or both transfer accounts do not exist`.
+  2. **Mock Harness / Single-Process Concurrency Leak**: While PostgreSQL engine enforces `FOR UPDATE` on disk, in-memory test databases (used for zero-dependency local testing) ignore row-level lock hints. As a result, 10 parallel asynchronous promises in the Node.js event loop were able to read before the first write committed, causing the race test to observe 10 successes instead of 1.
+* **What Was Done Instead (Correction)**:
+  1. Replaced ambiguous `ANY($1)` syntax with explicit, universally compatible parameterized SQL:
+     ```sql
+     SELECT * FROM accounts WHERE id IN ($1, $2) ORDER BY id ASC FOR UPDATE
+     ```
+  2. Implemented an **AccountMutex queue (Defense-in-Depth)** at the application service layer that sequences parallel requests for the same account IDs in-process, complementing the database engine's row-level `FOR UPDATE` locks.
+  3. Re-ran Vitest: All 5 test suites (7 tests) including 10 parallel overdraw attacks and 40 simultaneous cross-transfers passed with 0 errors.
+* **Commit**: `[feat: complete backend core ledger engine, tests passing]`
 
 ---
