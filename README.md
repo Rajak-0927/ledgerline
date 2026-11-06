@@ -2,7 +2,9 @@
 
 > **"Move money so the books always balance and the same request never pays twice."**  
 > *Snovasys Hiring Challenge 2026 Submission*  
-> **Author**: Shaik Abdul Rajak (`rajak8977407566`)
+> **Author**: Shaik Abdul Rajak (`rajak8977407566`)  
+> **Live Deployed Web Application**: [https://ledgerline-rajak.onrender.com](https://ledgerline-rajak.onrender.com)  
+> **GitHub Repository**: [https://github.com/Rajak-0927/ledgerline](https://github.com/Rajak-0927/ledgerline)
 
 ---
 
